@@ -1,0 +1,34 @@
+# Build
+build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.cmake
+*.ninja
+
+# Binaries
+cracks
+*.o
+*.a
+*.so
+
+# deal.II output
+*.vtu
+*.pvtu
+*.pvd
+*.visit
+
+# Test output
+output-*/
+*.output.diff
+*.tmp
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
