@@ -56,20 +56,20 @@ mkdir build && cd build && cmake -G Ninja /source && ninja
 
 ```bash
 # serial
-./cracks parameter/parameters_sneddon_2d.prm
+./poroelasticity parameter/parameters_sneddon_2d.prm
 
 # parallel
-mpirun -n 8 ./cracks parameter/parameters_sneddon_3d.prm
+mpirun -n 8 ./poroelasticity parameter/parameters_sneddon_3d.prm
 ```
 
 Running without arguments writes a `default.prm` listing all available options.
 
-## Test Cases
+## Benchmark Problems
 
-- Sneddon pressurized crack (2D and 3D)
-- Uniaxial tension
-- Three-point bending
-- Multiple interacting cracks in homogeneous and heterogeneous media
+- Sneddon pressurized channel — 2D and 3D verification against analytical solution
+- Uniaxial consolidation (Terzaghi) — classical 1D Biot consolidation
+- Three-point bending with fluid coupling
+- Fluid flow in heterogeneous porous media (2D and 3D)
 
 ```bash
 cd build && ctest -j4 -V
@@ -77,4 +77,4 @@ cd build && ctest -j4 -V
 
 ## Acknowledgements
 
-Adapted from the crack phase-field solver by Thomas Wick and Timo Heister (2013–2020), licensed under GNU GPL v2+.
+Adapted from the phase-field solver by Thomas Wick and Timo Heister (2013–2020), licensed under GNU GPL v2+.
