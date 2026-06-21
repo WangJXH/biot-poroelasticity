@@ -269,17 +269,17 @@ namespace Tensors
 
   template <int dim>
   inline Tensor<1, dim>
-  get_grad_pf(
+  get_grad_p(
     unsigned int                                    q,
     const std::vector<std::vector<Tensor<1, dim>>> &old_solution_grads)
   {
-    Tensor<1, dim> grad_pf;
-    grad_pf[0] = old_solution_grads[q][dim][0];
-    grad_pf[1] = old_solution_grads[q][dim][1];
+    Tensor<1, dim> grad_p;
+    grad_p[0] = old_solution_grads[q][dim][0];
+    grad_p[1] = old_solution_grads[q][dim][1];
     if (dim == 3)
-      grad_pf[2] = old_solution_grads[q][dim][2];
+      grad_p[2] = old_solution_grads[q][dim][2];
 
-    return grad_pf;
+    return grad_p;
   }
 
   template <int dim>
@@ -581,7 +581,7 @@ struct Introspection
   {
     ComponentMask displacements;
     ComponentMask displacement[dim];
-    ComponentMask phase_field;
+    ComponentMask pressure;
   };
 
   ComponentMasks component_masks;
@@ -590,7 +590,7 @@ struct Introspection
   {
     unsigned int displacement[dim];
     unsigned int velocity[dim];
-    unsigned int phase_field;
+    unsigned int pressure;
   };
 
   ComponentIndices component_indices;
@@ -599,7 +599,7 @@ struct Introspection
   {
     FEValuesExtractors::Vector displacement;
     FEValuesExtractors::Vector velocity;
-    FEValuesExtractors::Scalar phase_field;
+    FEValuesExtractors::Scalar pressure;
   };
 
 
@@ -647,7 +647,7 @@ Introspection<dim>::Introspection(ParameterHandler &prm)
     unsigned int c = 0;
     for (unsigned int d = 0; d < dim; ++d)
       component_indices.displacement[d] = c++; // 0 1
-    component_indices.phase_field = c++;       // 2
+    component_indices.pressure = c++;       // 2
   }
 
   {
@@ -659,31 +659,31 @@ Introspection<dim>::Introspection(ParameterHandler &prm)
         component_masks.displacements.set(d, true);
       }
 
-    component_masks.phase_field = ComponentMask(n_components, false);
-    component_masks.phase_field.set(component_indices.phase_field, true);
+    component_masks.pressure = ComponentMask(n_components, false);
+    component_masks.pressure.set(component_indices.pressure, true);
   }
 
   {
     extractors.displacement =
       FEValuesExtractors::Vector(component_indices.displacement[0]);
-    extractors.phase_field =
-      FEValuesExtractors::Scalar(component_indices.phase_field);
+    extractors.pressure =
+      FEValuesExtractors::Scalar(component_indices.pressure);
   }
 
   {
     components_to_blocks.resize(n_components, 0);
     unsigned int block = 0;
     block += direct_solver ? 0 : 1;
-    components_to_blocks[component_indices.phase_field] = block;
+    components_to_blocks[component_indices.pressure] = block;
   }
 }
 
 
 template <int dim>
-class FracturePhaseFieldProblem
+class BiotPoroelasticityProblem
 {
 public:
-  FracturePhaseFieldProblem(ParameterHandler &);
+  BiotPoroelasticityProblem(ParameterHandler &);
   void
   run();
   static void
@@ -769,7 +769,7 @@ private:
 
   std::vector<std::vector<bool>> constant_modes;
   LA::MPI::PreconditionAMG       preconditioner_solid;
-  LA::MPI::PreconditionAMG       preconditioner_phase_field;
+  LA::MPI::PreconditionAMG       preconditioner_pressure;
 
   // Global variables for timestepping scheme
   unsigned int timestep_number;
@@ -806,7 +806,7 @@ private:
   {
     enum Enum
     {
-      phase_field_ref,
+      pressure_ref,
       fixed_preref_sneddon,
       fixed_preref_miehe_tension,
       fixed_preref_miehe_shear,
@@ -814,7 +814,7 @@ private:
       fixed_preref_multiple_het,
       global,
       mix,
-      phase_field_ref_three_point_top
+      pressure_ref_three_point_top
     };
   };
   typename RefinementStrategy::Enum refinement_strategy;
@@ -836,7 +836,7 @@ private:
 
   double E_modulus, E_prime;
   double min_cell_diameter, norm_part_iterations,
-    value_phase_field_for_refinement;
+    value_pressure_for_refinement;
 
   unsigned int n_global_pre_refine, n_local_pre_refine, n_refinement_cycles;
 
@@ -849,7 +849,7 @@ private:
   std::string  output_folder;
   std::string  filename_basis;
   double       old_timestep, old_old_timestep;
-  bool         use_old_timestep_pf;
+  bool         use_old_timestep_p;
 
   TableHandler statistics;
 };
@@ -937,7 +937,7 @@ namespace PrescribedSolution
 } // namespace PrescribedSolution
 
 template <int dim>
-FracturePhaseFieldProblem<dim>::FracturePhaseFieldProblem(
+BiotPoroelasticityProblem<dim>::BiotPoroelasticityProblem(
   ParameterHandler &param)
   : mpi_com(MPI_COMM_WORLD)
   , introspection(param)
@@ -960,7 +960,7 @@ FracturePhaseFieldProblem<dim>::FracturePhaseFieldProblem(
 
 template <int dim>
 void
-FracturePhaseFieldProblem<dim>::setup_mesh()
+BiotPoroelasticityProblem<dim>::setup_mesh()
 {
   std::string mesh_info = "";
 
@@ -1047,7 +1047,7 @@ FracturePhaseFieldProblem<dim>::setup_mesh()
 
 template <int dim>
 void
-FracturePhaseFieldProblem<dim>::declare_parameters(ParameterHandler &prm)
+BiotPoroelasticityProblem<dim>::declare_parameters(ParameterHandler &prm)
 {
   prm.enter_subsection("Global parameters");
   {
@@ -1142,7 +1142,7 @@ FracturePhaseFieldProblem<dim>::declare_parameters(ParameterHandler &prm)
 // could also come from a paramter file.
 template <int dim>
 void
-FracturePhaseFieldProblem<dim>::set_runtime_parameters()
+BiotPoroelasticityProblem<dim>::set_runtime_parameters()
 {
   // Get parameters from file
   prm.enter_subsection("Global parameters");
@@ -1179,7 +1179,7 @@ FracturePhaseFieldProblem<dim>::set_runtime_parameters()
     AssertThrow(false, ExcNotImplemented());
 
   if (prm.get("ref strategy") == "phase field")
-    refinement_strategy = RefinementStrategy::phase_field_ref;
+    refinement_strategy = RefinementStrategy::pressure_ref;
   else if (prm.get("ref strategy") == "fixed preref sneddon")
     refinement_strategy = RefinementStrategy::fixed_preref_sneddon;
   else if (prm.get("ref strategy") == "fixed preref miehe tension")
@@ -1195,11 +1195,11 @@ FracturePhaseFieldProblem<dim>::set_runtime_parameters()
   else if (prm.get("ref strategy") == "mix")
     refinement_strategy = RefinementStrategy::mix;
   else if (prm.get("ref strategy") == "phase field three point top")
-    refinement_strategy = RefinementStrategy::phase_field_ref_three_point_top;
+    refinement_strategy = RefinementStrategy::pressure_ref_three_point_top;
   else
     AssertThrow(false, ExcNotImplemented());
 
-  value_phase_field_for_refinement =
+  value_pressure_for_refinement =
     prm.get_double("value phase field for refinement");
 
   output_folder  = prm.get("Output directory");
@@ -1298,8 +1298,8 @@ FracturePhaseFieldProblem<dim>::set_runtime_parameters()
   decompose_stress_rhs    = prm.get_double("Decompose stress in rhs");
   decompose_stress_matrix = prm.get_double("Decompose stress in matrix");
 
-  // For pf_extra
-  use_old_timestep_pf = false;
+  // For p_extra
+  use_old_timestep_p = false;
 
   prm.leave_subsection();
 }
@@ -1308,7 +1308,7 @@ FracturePhaseFieldProblem<dim>::set_runtime_parameters()
 
 template <int dim>
 void
-FracturePhaseFieldProblem<dim>::setup_system()
+BiotPoroelasticityProblem<dim>::setup_system()
 {
   system_pde_matrix.clear();
 
@@ -1317,7 +1317,7 @@ FracturePhaseFieldProblem<dim>::setup_system()
   // n_components == 3
   std::vector<unsigned int> sub_blocks(introspection.n_components, 0);
 
-  sub_blocks[introspection.component_indices.phase_field] = 1;
+  sub_blocks[introspection.component_indices.pressure] = 1;
 
   if (!direct_solver)
     DoFRenumbering::component_wise(dof_handler, sub_blocks);
@@ -1946,7 +1946,7 @@ decompose_stress(Tensor<2, dim>       &stress_term_plus,
 
 template <int dim>
 double
-FracturePhaseFieldProblem<dim>::compute_positive_energy(const Tensor<2, dim> &E)
+BiotPoroelasticityProblem<dim>::compute_positive_energy(const Tensor<2, dim> &E)
 {
   /* calculate energy from strain and stress */
   /* Compute eigen vector of strain */
@@ -2022,7 +2022,7 @@ FracturePhaseFieldProblem<dim>::compute_positive_energy(const Tensor<2, dim> &E)
 
 template <int dim>
 void
-FracturePhaseFieldProblem<dim>::assemble_system(bool residual_only)
+BiotPoroelasticityProblem<dim>::assemble_system(bool residual_only)
 {
   if (residual_only)
     system_total_residual = 0;
@@ -2104,19 +2104,19 @@ FracturePhaseFieldProblem<dim>::assemble_system(bool residual_only)
   std::vector<Tensor<1, dim>> old_displacement_values(n_q_points);
   std::vector<Tensor<1, dim>> old_old_displacement_values(n_q_points);
   std::vector<Tensor<1, dim>> old_velocity_values(n_q_points);
-  std::vector<double>         old_phase_field_values(n_q_points);
+  std::vector<double>         old_pressure_values(n_q_points);
 
   // Old Newton grads
   std::vector<Tensor<2, dim>> old_displacement_grads(n_q_points);
-  std::vector<Tensor<1, dim>> old_phase_field_grads(n_q_points);
+  std::vector<Tensor<1, dim>> old_pressure_grads(n_q_points);
 
   // Old timestep values
-  std::vector<double>         old_timestep_phase_field_values(n_q_points);
+  std::vector<double>         old_timestep_pressure_values(n_q_points);
   std::vector<Tensor<1, dim>> old_timestep_velocity_values(n_q_points);
 
   // Old old timestep values
   std::vector<Tensor<1, dim>> old_old_timestep_displacement_values(n_q_points);
-  std::vector<double>         old_old_timestep_phase_field_values(n_q_points);
+  std::vector<double>         old_old_timestep_pressure_values(n_q_points);
   std::vector<Tensor<2, dim>> old_old_displacement_grads(n_q_points);
 
 
@@ -2131,8 +2131,8 @@ FracturePhaseFieldProblem<dim>::assemble_system(bool residual_only)
   // Declaring test functions:
   std::vector<Tensor<1, dim>> phi_i_u(dofs_per_cell);
   std::vector<Tensor<2, dim>> phi_i_grads_u(dofs_per_cell);
-  std::vector<double>         phi_i_pf(dofs_per_cell);
-  std::vector<Tensor<1, dim>> phi_i_grads_pf(dofs_per_cell);
+  std::vector<double>         phi_i_p(dofs_per_cell);
+  std::vector<Tensor<1, dim>> phi_i_grads_p(dofs_per_cell);
 
   typename DoFHandler<dim>::active_cell_iterator cell =
                                                    dof_handler.begin_active(),
@@ -2164,25 +2164,25 @@ FracturePhaseFieldProblem<dim>::assemble_system(bool residual_only)
         fe_values[introspection.extractors.displacement].get_function_values(
           rel_old_solution, old_old_displacement_values);
 
-        fe_values[introspection.extractors.phase_field].get_function_values(
-          rel_solution, old_phase_field_values);
+        fe_values[introspection.extractors.pressure].get_function_values(
+          rel_solution, old_pressure_values);
 
         fe_values[introspection.extractors.displacement].get_function_gradients(
           rel_solution, old_displacement_grads);
 
-        fe_values[introspection.extractors.phase_field].get_function_gradients(
-          rel_solution, old_phase_field_grads);
+        fe_values[introspection.extractors.pressure].get_function_gradients(
+          rel_solution, old_pressure_grads);
 
         // Old_timestep_solution values, previous solution
-        fe_values[introspection.extractors.phase_field].get_function_values(
-          rel_old_solution, old_timestep_phase_field_values);
+        fe_values[introspection.extractors.pressure].get_function_values(
+          rel_old_solution, old_timestep_pressure_values);
 
         fe_values[introspection.extractors.displacement].get_function_gradients(
           rel_old_solution, old_old_displacement_grads);
 
         // Old Old_timestep_solution values
-        fe_values[introspection.extractors.phase_field].get_function_values(
-          rel_old_old_solution, old_old_timestep_phase_field_values);
+        fe_values[introspection.extractors.pressure].get_function_values(
+          rel_old_old_solution, old_old_timestep_pressure_values);
 
         {
           for (unsigned int q = 0; q < n_q_points; ++q)
@@ -2197,11 +2197,11 @@ FracturePhaseFieldProblem<dim>::assemble_system(bool residual_only)
                     fe_values[introspection.extractors.displacement].gradient(
                       k, q);
 
-                  phi_i_pf[k] =
-                    fe_values[introspection.extractors.phase_field].value(k, q);
+                  phi_i_p[k] =
+                    fe_values[introspection.extractors.pressure].value(k, q);
 
-                  phi_i_grads_pf[k] =
-                    fe_values[introspection.extractors.phase_field].gradient(k,
+                  phi_i_grads_p[k] =
+                    fe_values[introspection.extractors.pressure].gradient(k,
                                                                              q);
                 }
 
@@ -2209,15 +2209,15 @@ FracturePhaseFieldProblem<dim>::assemble_system(bool residual_only)
               // First, we prepare things coming from the previous Newton
               // iteration...
 
-              double pf              = old_phase_field_values[q];
-              double old_timestep_pf = old_timestep_phase_field_values[q];
-              double old_old_timestep_pf =
-                old_old_timestep_phase_field_values[q];
+              double p              = old_pressure_values[q];
+              double old_timestep_p = old_timestep_pressure_values[q];
+              double old_old_timestep_p =
+                old_old_timestep_pressure_values[q];
 
-              double pf_extra = pf;
+              double p_extra = p;
 
               const Tensor<2, dim> grad_u  = old_displacement_grads[q];
-              const Tensor<1, dim> grad_pf = old_phase_field_grads[q];
+              const Tensor<1, dim> grad_p = old_pressure_grads[q];
 
               const double divergence_u =
                 Tensors ::get_divergence_u<dim>(grad_u);
@@ -2302,7 +2302,7 @@ FracturePhaseFieldProblem<dim>::assemble_system(bool residual_only)
                       const unsigned int comp_i =
                         fe.system_to_component_index(i).first;
 
-                      if (comp_i == introspection.component_indices.phase_field)
+                      if (comp_i == introspection.component_indices.pressure)
                         {
                           stress_term_plus_LinU  = 0;
                           stress_term_minus_LinU = 0;
@@ -2370,17 +2370,17 @@ FracturePhaseFieldProblem<dim>::assemble_system(bool residual_only)
                               local_matrix(j, i) -=
                                 (scalar_product(E_j,
                                                 unit_tensor_sec *
-                                                  phi_i_pf[i])) *
+                                                  phi_i_p[i])) *
                                 fe_values.JxW(q);
 
                               local_matrix_K(j, i) -=
                                 (scalar_product(E_j,
                                                 unit_tensor_sec *
-                                                  phi_i_pf[i])) *
+                                                  phi_i_p[i])) *
                                 fe_values.JxW(q);
                             }
                           else if (comp_j ==
-                                   introspection.component_indices.phase_field)
+                                   introspection.component_indices.pressure)
                             {
                               SymmetricTensor<2, dim> coefficient =
                                 unit_symmetric_tensor<dim>();
@@ -2390,28 +2390,28 @@ FracturePhaseFieldProblem<dim>::assemble_system(bool residual_only)
 
                               /* fluid fluid Belongs to K*/
                               local_matrix(j, i) +=
-                                (phi_i_grads_pf[j] * // grad phi_i(x    _q)
+                                (phi_i_grads_p[j] * // grad phi_i(x    _q)
                                  coefficient *
-                                 phi_i_grads_pf[i] // grad phi_j(x _q)
+                                 phi_i_grads_p[i] // grad phi_j(x _q)
                                  ) *
                                 fe_values.JxW(q);
 
                               local_matrix_K(j, i) +=
-                                (phi_i_grads_pf[j] * // grad phi_i(x    _q)
+                                (phi_i_grads_p[j] * // grad phi_i(x    _q)
                                  coefficient *
-                                 phi_i_grads_pf[i] // grad phi_j(x _q)
+                                 phi_i_grads_p[i] // grad phi_j(x _q)
                                  ) *
                                 fe_values.JxW(q);
 
                               /*  fluid Mechanical */
                               local_matrix(j, i) +=
-                                (phi_i_pf[j] * // grad phi_i(x_ q)
+                                (phi_i_p[j] * // grad phi_i(x_ q)
                                  tr_E_i        // grad phi_j(x_    q)
                                  ) /
                                 timestep * fe_values.JxW(q); // dx
                                                              //
                               local_matrix_C(j, i) +=
-                                (phi_i_pf[j] * // grad phi_i(x_ q)
+                                (phi_i_p[j] * // grad phi_i(x_ q)
                                  tr_E_i        // grad phi_j(x_    q)
                                  ) *
                                 fe_values.JxW(q); // dx
@@ -2453,16 +2453,16 @@ FracturePhaseFieldProblem<dim>::assemble_system(bool residual_only)
 
                       // Solid
                       local_rhs(i) +=
-                        ((divergence_u_LinU * pf)) * fe_values.JxW(q);
+                        ((divergence_u_LinU * p)) * fe_values.JxW(q);
                     }
                   else if (comp_i ==
-                           introspection.component_indices.phase_field)
+                           introspection.component_indices.pressure)
                     {
-                      const double phi_i_pf =
-                        fe_values[introspection.extractors.phase_field].value(
+                      const double phi_i_p =
+                        fe_values[introspection.extractors.pressure].value(
                           i, q);
-                      const Tensor<1, dim> phi_i_grads_pf =
-                        fe_values[introspection.extractors.phase_field]
+                      const Tensor<1, dim> phi_i_grads_p =
+                        fe_values[introspection.extractors.pressure]
                           .gradient(i, q);
 
                       SymmetricTensor<2, dim> coefficient =
@@ -2472,13 +2472,13 @@ FracturePhaseFieldProblem<dim>::assemble_system(bool residual_only)
                       coefficient[1][1] = 4e0;
 
                       /* fluid fluid Belongs to K*/
-                      local_rhs(i) -= (phi_i_grads_pf * // grad phi_i(x _q)
-                                       coefficient * grad_pf // grad phi_j(x _q) */
+                      local_rhs(i) -= (phi_i_grads_p * // grad phi_i(x _q)
+                                       coefficient * grad_p // grad phi_j(x _q) */
                                        ) * 
                                       fe_values.JxW(q); 
 
                       /* fluid Mechanical */
-                       local_rhs(i) -= (phi_i_pf * // grad phi_i(x_ q) */
+                       local_rhs(i) -= (phi_i_p * // grad phi_i(x_ q) */
                                         (divergence_u - divergence_u_old) / timestep)          // grad phi_j(x_ q)
                                        * fe_values.JxW(q); // dx */
                     }
@@ -2622,7 +2622,7 @@ FracturePhaseFieldProblem<dim>::assemble_system(bool residual_only)
         data.higher_order_elements = true;
         data.smoother_sweeps       = 2;
         data.aggregation_threshold = 0.02;
-        preconditioner_phase_field.initialize(system_pde_matrix.block(1, 1),
+        preconditioner_pressure.initialize(system_pde_matrix.block(1, 1),
                                               data);
       }
     }
@@ -2630,7 +2630,7 @@ FracturePhaseFieldProblem<dim>::assemble_system(bool residual_only)
 
 template <int dim>
 void
-FracturePhaseFieldProblem<dim>::assemble_nl_residual()
+BiotPoroelasticityProblem<dim>::assemble_nl_residual()
 {
   assemble_system(true);
 }
@@ -2638,7 +2638,7 @@ FracturePhaseFieldProblem<dim>::assemble_nl_residual()
 
 template <int dim>
 void
-FracturePhaseFieldProblem<dim>::set_boundary_ids(
+BiotPoroelasticityProblem<dim>::set_boundary_ids(
   Triangulation<dim> &triangulation)
 {
   for (auto &face : triangulation.active_face_iterators())
@@ -2667,7 +2667,7 @@ FracturePhaseFieldProblem<dim>::set_boundary_ids(
 // the Newton system in update form.
 template <int dim>
 void
-FracturePhaseFieldProblem<dim>::set_boundary_conditions(
+BiotPoroelasticityProblem<dim>::set_boundary_conditions(
   const double      time,
   const bool        initial_step,
   ConstraintMatrix &constraints)
@@ -2725,7 +2725,7 @@ FracturePhaseFieldProblem<dim>::set_boundary_conditions(
             3,
             f_zero,
             constraints,
-            introspection.component_masks.phase_field);
+            introspection.component_masks.pressure);
 
           /* if (initial_step) */
           /*   VectorTools::interpolate_boundary_values( */
@@ -2795,7 +2795,7 @@ FracturePhaseFieldProblem<dim>::set_boundary_conditions(
 
 template <int dim>
 void
-FracturePhaseFieldProblem<dim>::set_initial_bc(const double time)
+BiotPoroelasticityProblem<dim>::set_initial_bc(const double time)
 {
   ConstraintMatrix constraints;
   set_boundary_conditions(time, true, constraints);
@@ -2805,7 +2805,7 @@ FracturePhaseFieldProblem<dim>::set_initial_bc(const double time)
 
 template <int dim>
 void
-FracturePhaseFieldProblem<dim>::set_newton_bc()
+BiotPoroelasticityProblem<dim>::set_newton_bc()
 {
   set_boundary_conditions(time, false, constraints_update);
 }
@@ -2840,7 +2840,7 @@ public:
 // inside the nonlinear Newton iteration.
 template <int dim>
 unsigned int
-FracturePhaseFieldProblem<dim>::solve()
+BiotPoroelasticityProblem<dim>::solve()
 {
   newton_update = 0;
 
@@ -2866,7 +2866,7 @@ FracturePhaseFieldProblem<dim>::solve()
                                   LA::MPI::PreconditionAMG>
         preconditioner(system_pde_matrix,
                        preconditioner_solid,
-                       preconditioner_phase_field);
+                       preconditioner_pressure);
 
       /* SchurComplement<LA::MPI::BlockMatrix> schur_complement(system_pde_matrix); */
 
@@ -2884,7 +2884,7 @@ FracturePhaseFieldProblem<dim>::solve()
 
 template <int dim>
 double
-FracturePhaseFieldProblem<dim>::newton_iteration(const double time)
+BiotPoroelasticityProblem<dim>::newton_iteration(const double time)
 {
   /* Time is always greater than 0 */
   /* solve solution at step_n+1 of t + 1 */
@@ -3024,7 +3024,7 @@ FracturePhaseFieldProblem<dim>::newton_iteration(const double time)
 //////////////////
 template <int dim>
 void
-FracturePhaseFieldProblem<dim>::output_results() const
+BiotPoroelasticityProblem<dim>::output_results() const
 {
   static int refinement_cycle = -1;
   ++refinement_cycle;
@@ -3155,7 +3155,7 @@ FracturePhaseFieldProblem<dim>::output_results() const
 
 template <int dim>
 double
-FracturePhaseFieldProblem<dim>::compute_energy()
+BiotPoroelasticityProblem<dim>::compute_energy()
 {
   // What are we computing? In Latex-style it is:
   // bulk energy = [(1+k)phi^2 + k] psi(e)
@@ -3184,8 +3184,8 @@ FracturePhaseFieldProblem<dim>::compute_energy()
 
   rel_solution = solution;
 
-  std::vector<double>         phase_field_values(n_q_points);
-  std::vector<Tensor<1, dim>> phase_field_grads(n_q_points);
+  std::vector<double>         pressure_values(n_q_points);
+  std::vector<Tensor<1, dim>> pressure_grads(n_q_points);
   std::vector<Tensor<2, dim>> displacement_grads(n_q_points);
 
   for (; cell != endc; ++cell)
@@ -3205,39 +3205,39 @@ FracturePhaseFieldProblem<dim>::compute_energy()
               (1.0 - 2 * poisson_ratio_nu);
           }
 
-        fe_values[introspection.extractors.phase_field].get_function_values(
-          rel_solution, phase_field_values);
-        fe_values[introspection.extractors.phase_field].get_function_gradients(
-          rel_solution, phase_field_grads);
+        fe_values[introspection.extractors.pressure].get_function_values(
+          rel_solution, pressure_values);
+        fe_values[introspection.extractors.pressure].get_function_gradients(
+          rel_solution, pressure_grads);
         fe_values[introspection.extractors.displacement].get_function_gradients(
           rel_solution, displacement_grads);
 
         for (unsigned int q = 0; q < n_q_points; ++q)
           {
             const Tensor<2, dim> grad_u  = displacement_grads[q];
-            const Tensor<1, dim> grad_pf = phase_field_grads[q];
+            const Tensor<1, dim> grad_p = pressure_grads[q];
 
             const Tensor<2, dim> E    = 0.5 * (grad_u + transpose(grad_u));
             const double         tr_E = trace(E);
 
-            const double pf = phase_field_values[q];
+            const double p = pressure_values[q];
 
             const double tr_e_2 = trace(E * E);
 
             const double psi_e = 0.5 * lame_coefficient_lambda * tr_E * tr_E +
                                  lame_coefficient_mu * tr_e_2;
 
-            local_bulk_energy += ((1 + constant_k) * pf * pf + constant_k) *
+            local_bulk_energy += ((1 + constant_k) * p * p + constant_k) *
                                  psi_e * fe_values.JxW(q);
 
             local_bulk_energy_origin +=
-              ((1 + constant_k) * pf * pf + constant_k) * psi_e *
+              ((1 + constant_k) * p * p + constant_k) * psi_e *
               fe_values.JxW(q);
 
             local_crack_energy +=
               G_c / 2.0 *
-              ((pf - 1) * (pf - 1) / alpha_eps +
-               alpha_eps * scalar_product(grad_pf, grad_pf)) *
+              ((p - 1) * (p - 1) / alpha_eps +
+               alpha_eps * scalar_product(grad_p, grad_p)) *
               fe_values.JxW(q);
           }
       }
@@ -3261,7 +3261,7 @@ FracturePhaseFieldProblem<dim>::compute_energy()
 
 template <int dim>
 void
-FracturePhaseFieldProblem<dim>::compute_load()
+BiotPoroelasticityProblem<dim>::compute_load()
 {
   const QGauss<dim - 1> face_quadrature_formula(3);
   FEFaceValues<dim>     fe_face_values(fe,
@@ -3352,7 +3352,7 @@ FracturePhaseFieldProblem<dim>::compute_load()
 // eps and kappa
 template <int dim>
 void
-FracturePhaseFieldProblem<dim>::determine_mesh_dependent_parameters()
+BiotPoroelasticityProblem<dim>::determine_mesh_dependent_parameters()
 {
   min_cell_diameter = 1.0e+300;
   {
@@ -3431,7 +3431,7 @@ FracturePhaseFieldProblem<dim>::determine_mesh_dependent_parameters()
 
 template <int dim>
 bool
-FracturePhaseFieldProblem<dim>::refine_mesh()
+BiotPoroelasticityProblem<dim>::refine_mesh()
 {
   LA::MPI::BlockVector relevant_solution(partition,
                                          partition_relevant,
@@ -3466,7 +3466,7 @@ FracturePhaseFieldProblem<dim>::refine_mesh()
               }
           }
     } // end Miehe shear
-  else if (refinement_strategy == RefinementStrategy::phase_field_ref)
+  else if (refinement_strategy == RefinementStrategy::pressure_ref)
     {
       // refine if phase field < constant
       typename DoFHandler<dim>::active_cell_iterator cell = dof_handler
@@ -3482,10 +3482,10 @@ FracturePhaseFieldProblem<dim>::refine_mesh()
               {
                 const unsigned int comp_i =
                   fe.system_to_component_index(i).first;
-                if (comp_i != introspection.component_indices.phase_field)
+                if (comp_i != introspection.component_indices.pressure)
                   continue; // only look at phase field
                 if (relevant_solution(local_dof_indices[i]) <
-                    value_phase_field_for_refinement)
+                    value_pressure_for_refinement)
                   {
                     cell->set_refine_flag();
                     break;
@@ -3494,7 +3494,7 @@ FracturePhaseFieldProblem<dim>::refine_mesh()
           }
     }
   else if (refinement_strategy ==
-           RefinementStrategy::phase_field_ref_three_point_top)
+           RefinementStrategy::pressure_ref_three_point_top)
     {}
   else if (refinement_strategy == RefinementStrategy::global)
     {
@@ -3522,10 +3522,10 @@ FracturePhaseFieldProblem<dim>::refine_mesh()
                 {
                   const unsigned int comp_i =
                     fe.system_to_component_index(i).first;
-                  if (comp_i != introspection.component_indices.phase_field)
+                  if (comp_i != introspection.component_indices.pressure)
                     continue; // only look at phase field
                   if (relevant_solution(local_dof_indices[i]) <
-                      value_phase_field_for_refinement)
+                      value_pressure_for_refinement)
                     {
                       cell->set_refine_flag();
                       break;
@@ -3634,7 +3634,7 @@ FracturePhaseFieldProblem<dim>::refine_mesh()
 // As usual, we have to call the run method.
 template <int dim>
 void
-FracturePhaseFieldProblem<dim>::run()
+BiotPoroelasticityProblem<dim>::run()
 {
   /* START Print Information pre running */
 
@@ -3736,7 +3736,7 @@ FracturePhaseFieldProblem<dim>::run()
   double             tmp_timestep            = 0.0;
 
   // Initialize old and old_old_solutions
-  // old_old is needed for extrapolation for pf_extra to avoid pf^2 in
+  // old_old is needed for extrapolation for p_extra to avoid p^2 in
   // block(0,0)
   //
   old_old_solution = solution;
@@ -3800,7 +3800,7 @@ FracturePhaseFieldProblem<dim>::run()
               // The Newton method can either stagnate or the linear solver
               // might not converge. To not abort the program we catch the
               // exception and retry with a smaller step.
-              use_old_timestep_pf = false;
+              use_old_timestep_p = false;
 
               try
                 {
@@ -3812,7 +3812,7 @@ FracturePhaseFieldProblem<dim>::run()
 
                   while (newton_reduction > upper_newton_rho)
                     {
-                      use_old_timestep_pf = true;
+                      use_old_timestep_p = true;
                       time -= timestep;
                       timestep = timestep / 10.0;
                       time += timestep;
@@ -3944,7 +3944,7 @@ main(int argc, char *argv[])
       deallog.depth_console(0);
 
       ParameterHandler prm;
-      FracturePhaseFieldProblem<2>::declare_parameters(prm);
+      BiotPoroelasticityProblem<2>::declare_parameters(prm);
       if (argc > 1)
         {
           prm.parse_input(argv[1]);
@@ -3995,12 +3995,12 @@ main(int argc, char *argv[])
 
       if (problem_dimension == 2)
         {
-          FracturePhaseFieldProblem<2> fracture_problem(prm);
+          BiotPoroelasticityProblem<2> fracture_problem(prm);
           fracture_problem.run();
         }
       else if (problem_dimension == 3)
         {
-          FracturePhaseFieldProblem<3> fracture_problem(prm);
+          BiotPoroelasticityProblem<3> fracture_problem(prm);
           fracture_problem.run();
         }
       else
