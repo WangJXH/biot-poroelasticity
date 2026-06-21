@@ -1,15 +1,14 @@
-# Listing of Example single edge notched test (Miehe 2010)
-# pure shear test (curved fracture)
+# Uniaxial tension poroelastic problem
 # --------------------------------------------------------
 
 subsection Global parameters
-  set Global pre-refinement steps	      = 0
+  set Global pre-refinement steps	      = 2
   set Local pre-refinement steps  	    = 0
   set Adaptive refinement cycles        = 1
 
   set FE degree                         = 1
   set Max No of timesteps  	  	        = 100
-  # Miehe arbeitet mit 1.0e-5
+  # timestep size: 2.0e-3
   set Timestep size			          = 2.0e-3
   set Timestep size to switch to	= 2.0e-3
   set Switch timestep after steps	= 100
@@ -33,14 +32,14 @@ subsection Problem dependent parameters
   # Material and problem-rhs parameters
   set Pressure				                  = 0.0
   set Fracture toughness G_c		        = 2.7
-  set Poisson ratio nu			            = 0.3
-  set E modulus	    			              = 210e3
-  set Lame mu		                        = 80.7692e3 # shear
-  set Lame lambda			                  = 121.154e3	  
+  set Poisson ratio nu			            = 0.2
+  set E modulus	    			              = 1e+3
+  set Lame mu		                        = 1
+  set Lame lambda			                  = 1	  
 end 
 
 subsection Solver parameters
-  set Use Direct Inner Solver		   = false
+  set Use Direct Inner Solver		   = true
   set Newton lower bound     		   = 1.0e-6
   set Newton maximum steps		     = 100
   set Upper Newton rho			       = 0.99

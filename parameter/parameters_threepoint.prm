@@ -1,5 +1,4 @@
-# Three point bending test from 
-# Miehe, Hofacker, Welschinger, 2010
+# Three-point bending poroelastic problem
 # --------------------------------------------------------
 
 subsection Global parameters
@@ -15,9 +14,7 @@ subsection Global parameters
 
   set outer solver                      = active set 
   set test case                         = three point bending
-  # phase field, 
-  # phase field three point top
-  # mix
+  # available: pressure, pressure three point top, mix
   set ref strategy                      = phase field
 
   set value phase field for refinement  = 0.5

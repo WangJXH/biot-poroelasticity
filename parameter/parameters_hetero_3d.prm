@@ -1,5 +1,4 @@
-# Heterogeneous 3d example with two initial cracks growing based on an
-# increasing applied pressure in the crack region
+# Heterogeneous 3D poroelastic problem: pressure loading in a heterogeneous porous medium
 # ----------------------------------------------------
 
 subsection Global parameters
